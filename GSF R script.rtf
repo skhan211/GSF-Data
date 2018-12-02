@@ -1,0 +1,108 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf100
+{\fonttbl\f0\fmodern\fcharset0 Courier;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red0\green0\blue0;\red31\green124\blue26;
+\red16\green121\blue2;\red251\green0\blue7;\red0\green0\blue255;\red247\green247\blue247;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;\csgray\c0\c0;\cssrgb\c13333\c54510\c13333;
+\cssrgb\c0\c53333\c0;\cssrgb\c100000\c0\c0;\cssrgb\c0\c0\c100000;\cssrgb\c97647\c97647\c97647;}
+\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\sl280\partightenfactor0
+
+\f0\fs24 \cf2 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 # Version info: R 3.2.3, Biobase 2.30.0, GEOquery 2.40.0, limma 3.26.8\
+# R scripts generated  Sun Dec 2 15:57:35 EST 2018\
+\
+########\cb3 ########################################################\
+#   Differential expression analysis with limma\
+library(Biobase)\
+library(GEOquery)\
+library(limma)\
+\
+\pard\pardeftab720\sl336\partightenfactor0
+\cf2 \strokec4 # move to a project folder and create a result folder in it \cf2 \strokec2 \
+basedir \cf2 \strokec5 <-\cf2 \strokec2  \cf2 \strokec6 "~/R.analysis/19.GEO2R.GSE31095\'94\cf2 \strokec2 \
+\cf2 \strokec7 setwd\strokec5 (\cf2 \strokec2 basedir\cf2 \strokec5 )\cf2 \strokec2 \
+\'a0\
+resfolder \cf2 \strokec5 <-\cf2 \strokec2  \cf2 \strokec6 "GEO2R.GSE31095.results"\cf2 \strokec2 \
+\cf2 \strokec7 if\cf2 \strokec2  \cf2 \strokec5 (!\cf2 \strokec2  \cf2 \strokec7 file.exists\strokec5 (\cf2 \strokec2 resfolder\cf2 \strokec5 )\cf2 \strokec2  \cf2 \strokec5 )\{\cf2 \strokec2 \
+    \cf2 \strokec7 dir.create\strokec5 (\cf2 \strokec2 resfolder, showWarnings \cf2 \strokec5 =\cf2 \strokec2  FALSE, recursive \cf2 \strokec5 =\cf2 \strokec2  FALSE, \cf2 \strokec7 mode\cf2 \strokec2  \cf2 \strokec5 =\cf2 \strokec2  \cf2 \strokec6 "0777"\strokec5 )\cf2 \strokec2 \
+    \cf2 \strokec7 Sys.chmod\strokec5 (\cf2 \strokec2 resfolder, \cf2 \strokec7 mode\cf2 \strokec2  \cf2 \strokec5 =\cf2 \strokec2  \cf2 \strokec6 "0777"\cf2 \strokec2 , use_umask\cf2 \strokec5 =\cf2 \strokec2 TRUE\cf2 \strokec5 )\cf2 \strokec2 \
+    \cf2 \strokec5 \}\cf2 \strokec2 \
+\pard\pardeftab720\sl280\partightenfactor0
+\cf2 \
+\
+# load series and pl\cb1 atform data from GEO\
+\
+If (!exists(\'93gset\'94)) \{\
+\pard\pardeftab720\sl336\partightenfactor0
+
+\fs28 \cf2 \cb8 gset \cf5 \strokec5 <-\cf2 \strokec2  getGEO\cf5 \strokec5 (\cf6 \strokec6 "GSE1871"\cf2 \strokec2 , destdir \cf5 \strokec5 =\cf2 \strokec2  resfolder, GSEMatrix \cf5 \strokec5 =\cf2 \strokec2 TRUE\cf5 \strokec5 )
+\fs24 \cf2 \cb1 \strokec2 \
+\pard\pardeftab720\sl280\partightenfactor0
+\cf2 if (length(gset) > 1) idx <- grep("GPL4133", attr(gset, "names")) else idx <- 1\
+gset <- gset[[idx]]\
+\
+# make proper column names to match toptable \
+fvarLabels(gset) <- make.names(fvarLabels(gset))\
+\
+# group names for all samples\
+gsms <- "00000000000011111111"\
+sml <- c()\
+for (i in 1:nchar(gsms)) \{ sml[i] <- substr(gsms,i,i) \}\
+\
+# log2 transform\
+ex <- exprs(gset)\
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))\
+LogC <- (qx[5] > 100) ||\
+          (qx[6]-qx[1] > 50 && qx[2] > 0) ||\
+          (qx[2] > 0 && qx[2] < 1 && qx[4] > 1 && qx[4] < 2)\
+if (LogC) \{ ex[which(ex <= 0)] <- NaN\
+  exprs(gset) <- log2(ex) \}\
+\
+# set up the data and proceed with analysis\
+sml <- paste("G", sml, sep="")    # set group names\
+fl <- as.factor(sml)\
+gset$description <- fl\
+design <- model.matrix(~ description + 0, gset)\
+colnames(design) <- levels(fl)\
+fit <- lmFit(gset, design)\
+cont.matrix <- makeContrasts(G1-G0, levels=design)\
+fit2 <- contrasts.fit(fit, cont.matrix)\
+fit2 <- eBayes(fit2, 0.01)\
+tT <- topTable(fit2, adjust="fdr", sort.by="B", number=250)\
+\
+tT <- subset(tT, select=c("ID","adj.P.Val","P.Value","t","B","logFC","Gene.symbol","Gene.title"))\
+write.table(tT, file=stdout(), row.names=F, sep="\\t")\
+\
+\
+################################################################\
+#   Boxplot for selected GEO samples\
+library(Biobase)\
+library(GEOquery)\
+\
+# load series and platform data from GEO\
+\
+gset <- getGEO("GSE31095", GSEMatrix =TRUE, getGPL=FALSE)\
+if (length(gset) > 1) idx <- grep("GPL4133", attr(gset, "names")) else idx <- 1\
+gset <- gset[[idx]]\
+\
+# group names for all samples in a series\
+gsms <- "00000000000011111111"\
+sml <- c()\
+for (i in 1:nchar(gsms)) \{ sml[i] <- substr(gsms,i,i) \}\
+sml <- paste("G", sml, sep="")  set group names\
+\
+# order samples by group\
+ex <- exprs(gset)[ , order(sml)]\
+sml <- sml[order(sml)]\
+fl <- as.factor(sml)\
+labels <- c("control","glioma")\
+\
+# set parameters and draw the plot\
+palette(c("#dfeaf4","#f4dfdf", "#AABBCC"))\
+dev.new(width=4+dim(gset)[[2]]/5, height=6)\
+par(mar=c(2+round(max(nchar(sampleNames(gset)))/2),4,2,1))\
+title <- paste ("GSE31095", '/', annotation(gset), " selected samples", sep ='')\
+boxplot(ex, boxwex=0.6, notch=T, main=title, outline=FALSE, las=2, col=fl)\
+legend("topleft", labels, fill=palette(), bty="n")\
+}
